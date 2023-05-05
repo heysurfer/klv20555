@@ -1,6 +1,25 @@
 #include <cryptopp/md5.h>
 #include <cryptopp/hex.h>
-#include <string>
+
+template <typename T>
+std::string toStr(const T& t) {
+	std::ostringstream os;
+	os << t;
+	return os.str();
+}
+
+std::vector<std::string> split(const std::string& s, char delim)
+{
+	std::vector<std::string> result;
+	std::istringstream iss(s);
+
+	for (std::string token; std::getline(iss, token, delim);)
+	{
+		result.push_back(std::move(token));
+	}
+
+	return result;
+}
 
 std::string GetMD5CheckSumAsString(const std::string& str)
 {
@@ -16,7 +35,7 @@ std::string GetMD5CheckSumAsString(const std::string& str)
 	return encoded;
 }
 
-std::string xor_decrypt(uint8_t* encryptedStr, const uint8_t pos, uint32_t key)
+std::string xor_decrypt(uint8_t* encryptedStr, uint8_t pos, uint32_t key)
 {
 	std::string str;
 	std::size_t size = 32;
@@ -29,13 +48,38 @@ std::string xor_decrypt(uint8_t* encryptedStr, const uint8_t pos, uint32_t key)
 	return str;
 }
 
-std::string getKlv(float gameVersion, uint32_t protocol, const std::string& rid, int32_t hash,
-                   std::vector<std::string> salt)
+std::string generateKlv(float gameVersion, uint32_t protocol, const std::string& rid, int32_t hash,
+                        const std::vector<std::string>& salt)
 {
 	std::string klv = std::format("{}{}{}{}{}{}{}{}{}",
 	                              gameVersion, salt[0], rid.c_str(),
 	                              salt[1], salt[2], hash,
 	                              salt[3], protocol, salt[4]);
+	return GetMD5CheckSumAsString(klv);
+}
+
+std::string generateKlvWithAPI(float gameVersion, uint32_t protocol, const std::string& rid, int32_t hash,
+                               const std::vector<std::string>& salt, const std::string& method)
+{
+	std::string klv;
+	int lastSaltID = 0;
+	const std::vector<std::string> methods = split(method, '+');
+	for (const auto& m : methods)
+	{
+		if (m == "rid")
+			klv += rid;
+		else if (m == "gameVersion")
+			klv += toStr(gameVersion);
+		else if (m == "salt")
+		{
+			klv += salt[lastSaltID];
+			++lastSaltID;
+		}
+		else if (m == "hash")
+			klv += toStr(hash);
+		else if (m == "protocol")
+			klv += toStr(protocol);
+	}
 	return GetMD5CheckSumAsString(klv);
 }
 
@@ -72,5 +116,11 @@ int main()
 		salt.push_back(decodedSalt);
 	}
 
-	std::printf("Generated Klv %s", getKlv(4.24f, 190, "CD544612B02A2F5D7ADD5366BB4CF1C0", 1054520736, salt).c_str());
+	std::printf("Generated Klv %s\n",
+	            generateKlv(4.24f, 190, "CD544612B02A2F5D7ADD5366BB4CF1C0", 1054520736, salt).c_str());
+
+	std::printf("Generated Klv %s\n",
+		generateKlvWithAPI(4.24f, 190, "CD544612B02A2F5D7ADD5366BB4CF1C0", 1054520736, salt,
+			"gameVersion+salt+rid+salt+salt+hash+salt+protocol+salt").c_str());
+	/*https://api.surferwallet.net/klv*/
 }
