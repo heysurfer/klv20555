@@ -2,7 +2,8 @@
 #include <cryptopp/hex.h>
 
 template <typename T>
-std::string toStr(const T& t) {
+std::string toStr(const T& t)
+{
 	std::ostringstream os;
 	os << t;
 	return os.str();
@@ -24,14 +25,17 @@ std::vector<std::string> split(const std::string& s, char delim)
 std::string GetMD5CheckSumAsString(const std::string& str)
 {
 	using byte = unsigned char;
+
 	CryptoPP::Weak1::MD5 md5;
 	byte digest[CryptoPP::Weak1::MD5::DIGESTSIZE];
 	md5.CalculateDigest(digest, reinterpret_cast<const byte*>(str.c_str()), str.length());
+
 	CryptoPP::HexEncoder encoder;
 	std::string encoded;
 	encoder.Attach(new CryptoPP::StringSink(encoded));
 	encoder.Put(digest, sizeof(digest));
 	encoder.MessageEnd();
+
 	return encoded;
 }
 
@@ -39,7 +43,8 @@ std::string xor_decrypt(uint8_t* encryptedStr, uint8_t pos, uint32_t key)
 {
 	std::string str;
 	std::size_t size = 32;
-	str.reserve(32);
+	str.reserve(size);
+
 	for (std::size_t i = 0; i < size; ++i)
 	{
 		str.push_back(encryptedStr[i + pos] ^ key);
@@ -49,21 +54,21 @@ std::string xor_decrypt(uint8_t* encryptedStr, uint8_t pos, uint32_t key)
 }
 
 std::string generateKlv(float gameVersion, uint32_t protocol, const std::string& rid, int32_t hash,
-                        const std::vector<std::string>& salt)
+                        const std::vector<std::string>& salts)
 {
 	std::string klv = std::format("{}{}{}{}{}{}{}{}{}",
-	                              gameVersion, salt[0], rid.c_str(),
-	                              salt[1], salt[2], hash,
-	                              salt[3], protocol, salt[4]);
+	                              gameVersion, salts[0], rid.c_str(),
+	                              salts[1], salts[2], hash,
+	                              salts[3], protocol, salts[4]);
 	return GetMD5CheckSumAsString(klv);
 }
 
 std::string generateKlvWithAPI(float gameVersion, uint32_t protocol, const std::string& rid, int32_t hash,
-                               const std::vector<std::string>& salt, const std::string& method)
+                               const std::vector<std::string>& salts, const std::string& method)
 {
 	std::string klv;
 	int lastSaltID = 0;
-	const std::vector<std::string> methods = split(method, '+');
+	const std::vector methods = split(method, '+');
 	for (const auto& m : methods)
 	{
 		if (m == "rid")
@@ -72,7 +77,7 @@ std::string generateKlvWithAPI(float gameVersion, uint32_t protocol, const std::
 			klv += toStr(gameVersion);
 		else if (m == "salt")
 		{
-			klv += salt[lastSaltID];
+			klv += salts[lastSaltID];
 			++lastSaltID;
 		}
 		else if (m == "hash")
@@ -85,11 +90,14 @@ std::string generateKlvWithAPI(float gameVersion, uint32_t protocol, const std::
 
 int main()
 {
-	std::vector<int> _key{-1447198672, -1234183739, -1246037438, -1955177441, 1223948932};
-	std::vector<std::string> salt;
-	salt.reserve(5);
+	std::vector keys{-1447198672, -1234183739, -1246037438, -1955177441, 1223948932};
+	std::vector<std::string> salts;
+	salts.reserve(5);
 	uint8_t encryptedStr[]
 	{
+		/*
+		These salts are compatible with versions 4.24 to 4.26
+		*/
 		0x09, 0x03, 0xF6, 0xB7, 0x3F, 0x73, 0x18, 0x66, 0x99, 0x31,
 		0x97, 0x7A, 0xAF, 0x02, 0x57, 0xEA, 0xDF, 0x4D, 0xC2, 0x8D,
 		0xBA, 0x80, 0x05, 0xF6, 0xB8, 0x63, 0x66, 0x34, 0x37, 0x64,
@@ -107,20 +115,21 @@ int main()
 		0xBB, 0x7C, 0x08, 0x41, 0xCA, 0xD2, 0xF6, 0xAB, 0x0E, 0x4F,
 		0xCA, 0xCD, 0xC2, 0xC2, 0x8F, 0xED, 0x90, 0x33, 0x95, 0x75
 	};
+	static_assert(sizeof(encryptedStr) >= 160, "Encrypted string size must be at least 160");
 
-	for (auto key : _key)
+	for (auto key : keys)
 	{
-		uint8_t index = std::distance(_key.begin(), std::find(_key.begin(), _key.end(), key));
-		std::string decodedSalt = xor_decrypt(encryptedStr, index * 32, key);
-		std::printf("Decrypted Salt %s\n", decodedSalt.c_str());
-		salt.push_back(decodedSalt);
+		int index = std::distance(keys.begin(), std::find(keys.begin(), keys.end(), key));
+		std::string decSalt = xor_decrypt(encryptedStr, index * 32, key);
+		std::printf("%i.Salt : %s\n", index,decSalt.c_str());
+		salts.push_back(decSalt);
 	}
 
 	std::printf("Generated Klv %s\n",
-	            generateKlv(4.24f, 190, "CD544612B02A2F5D7ADD5366BB4CF1C0", 1054520736, salt).c_str());
+	            generateKlv(4.25f, 190, "CD544612B02A2F5D7ADD5366BB4CF1C0", 1054520736, salts).c_str());
 
 	std::printf("Generated Klv %s\n",
-		generateKlvWithAPI(4.24f, 190, "CD544612B02A2F5D7ADD5366BB4CF1C0", 1054520736, salt,
-			"gameVersion+salt+rid+salt+salt+hash+salt+protocol+salt").c_str());
+	            generateKlvWithAPI(4.25f, 190, "CD544612B02A2F5D7ADD5366BB4CF1C0", 1054520736, salts,
+	                               "gameVersion+salt+rid+salt+salt+hash+salt+protocol+salt").c_str());
 	/*https://api.surferwallet.net/klv*/
 }
