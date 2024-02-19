@@ -3,7 +3,8 @@
 #include <cryptopp/hex.h>
 
 std::string get_md5_checksum(const std::string& str)
-{
+{	
+	/*Required uppercase format. OpenSSL, etc., return lowercase; don't forget to convert to uppercase*/
 	CryptoPP::Weak1::MD5 md5;
 	unsigned char digest[CryptoPP::Weak1::MD5::DIGESTSIZE];
 	md5.CalculateDigest(digest, reinterpret_cast<const unsigned char*>(str.c_str()), str.length());
@@ -13,7 +14,7 @@ std::string get_md5_checksum(const std::string& str)
 	encoder.Attach(new CryptoPP::StringSink(encoded));
 	encoder.Put(digest, sizeof(digest));
 	encoder.MessageEnd();
-
+	
 	return encoded;
 }
 
@@ -73,7 +74,7 @@ int main()
 		int index = std::distance(keys.begin(), std::ranges::find(keys, key));
 		std::string decSalt = xor_decrypt(encryptedStr, index * 32, key);
 		std::printf("%i.Salt : %s\n", index, decSalt.c_str());
-		salts.push_back(decSalt);
+		salts[index] = decSalt;
 	}
 	std::printf("Generated Klv %s\n",
 		generate_klv(4.47f, 0xC9, "0182E268D08AB45702A841A172170E12", 1431658473, salts).c_str());
